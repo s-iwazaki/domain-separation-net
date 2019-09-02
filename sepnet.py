@@ -11,6 +11,8 @@ from tensorflow.contrib.tensorboard.plugins import projector
 
 FLAGS = None
 
+#header = ''
+
 def train():
     batch_size = 512
     n_src_eval = 5000
@@ -251,6 +253,17 @@ def train():
     init = tf.global_variables_initializer()
     sess.run([init])
 
+    proj_config = projector.ProjectorConfig()
+    embedding_src = proj_config.embeddings.add()
+    embedding_tgt = proj_config.embeddings.add()
+    embedding_src.tensor_name = sfeature_src.name
+    embedding_tgt.tensor_name = sfeature_tgt.name
+
+    # embedding_src.metadata_path =
+    # embedding_tgt.metadata_path =
+
+    projector.visualize_embeddings(summary_writer, config)
+
     for i in range(FLAGS.max_step):
         if i % 10 == 0:  # Record summaries and test-set accuracy
             sess.run([src_eval_init_op, tgt_eval_init_op])
@@ -258,31 +271,35 @@ def train():
             test_writer.add_summary(summary, i)
             print('Accuracy at step %s: %s' % (i, acc))
             sess.run([src_train_init_op, tgt_train_init_op])
+        if i % 200 == 199:
+            saver.save(sess, FLAGS.save_dir + '/model.ckpt')
+
+            with open(os.path.join(FLAGS.meta_dir + '/meta.tsv'),'w') as fout:
+                # File Header
+                file.write(header)
+
+                # タブ区切りでラベル(正解の数字)書き込み
+                for index, label in enumerate(batch_ys):
+                    file.write("%d\t%d\n" % (index, label))
+
+            summary, _ = sess.run([merged, train_step])
+            train_writer.add_summary(summary, i)
         else:  # Record a summary
             summary, _ = sess.run([merged, train_step])
             train_writer.add_summary(summary, i)
-
-    # Projector設定
-    config = projector.ProjectorConfig()
-    embedding = config.embeddings.add()
-    embedding.tensor_name = embedding_var.name
-
-    # メタデータ(CSV)パス
-    embedding.metadata_path = os.path.join(CUR_DIR,META)
-
-    # Sprite Imageパスと設定
-    embedding.sprite.image_path = os.path.join(CUR_DIR,SPRITES)
-    embedding.sprite.single_image_dim.extend([28,28])
-
-    # Projectorに出力
-    projector.visualize_embeddings(summary_writer, config)
     train_writer.close()
     test_writer.close()
 
 def main(_):
     if tf.io.gfile.exists(FLAGS.log_dir):
         tf.io.gfile.rmtree(FLAGS.log_dir)
+    if tf.io.gfile.exists(FLAGS.save_dir):
+        tf.io.gfile.rmtree(FLAGS.save_dir)
+    if tf.io.gfile.exists(FLAGS.meta_dir):
+        tf.io.gfile.rmtree(FLAGS.meta_dir)
     tf.io.gfile.makedirs(FLAGS.log_dir)
+    tf.io.gfile.makedirs(FLAGS.save_dir)
+    tf.io.gfile.makedirs(FLAGS.meta_dir)
     with tf.Graph().as_default():
         train()
 
@@ -297,8 +314,16 @@ if __name__ == '__main__':
     parser.add_argument('--beta', type=float, default=0.075)
     parser.add_argument('--gamma', type=float, default=0.3)
     parser.add_argument('--eta', type=float, default=1.0)
-    parser.add_argument('--dropout', type=float, default=0.9,
-                        help='Keep probability for training dropout.')
+    parser.add_argument(
+        '--save_dir',
+        type=str,
+        default='models/model',
+        help='save model directory')
+    parser.add_argument(
+        '--meta_dir',
+        type=str,
+        default='models/model',
+        help='projector meta data directory')
     parser.add_argument(
         '--log_dir',
         type=str,
