@@ -6,78 +6,43 @@ from tqdm import trange
 import numpy as np
 import tensorflow as tf
 
+# from tensorflow.examples.tutorials.mnist import input_data
+import tensorflow_datasets as tfds
 from tensorflow.contrib.tensorboard.plugins import projector
 
-from utils import *
-
 FLAGS = None
-LABEL_COLUMN = [
-    ## ここにデータcsvのcolumn名
-]
-CATEGORIY_COLUMN = {
-    # 'sex': ['male', 'female'],
-    # 'class' : ['First', 'Second', 'Third'],
-    # 'deck' : ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'],
-    # 'embark_town' : ['Cherbourg', 'Southhampton', 'Queenstown'],
-    # 'alone' : ['y', 'n']
-}
-BAK_COLUMN = {
 
-}
-OUTPUT_COLUMN = {
-    ## ここにクラス分類器の出力になるcolumn名と全カテゴリを示したテキストファイル
-}
-
-#src_train_file_path = 
-#src_eval_file_path = 
-#tgt_train_file_path = 
-#tgt_eval_file_path = 
-
-def preprocess(features, labels):
-  
-    # カテゴリ特徴量の処理
-    for feature in CATEGORY_COLUMN.keys():
-        features[feature] = process_categorical_data(features[feature],
-                                                    CATEGORIES[feature])
-    # 連続特徴量の処理
-    for feature in MEANS.keys():
-        features[feature] = process_continuous_data(features[feature],
-                                                    MEANS[feature])
-    
-    # 特徴量を1つのテンソルに組み立てる
-    features = tf.concat([features[column] for column in FEATURE_COLUMNS], 1)
-    
-    return features, labels
-
-def process_categorical_data(data, categories):
-    """カテゴリ値を表すワンホット・エンコーディングされたテンソルを返す"""
-    
-    # 最初の ' ' を取り除く
-    data = tf.strings.regex_replace(data, '^ ', '')
-    # 最後の '.' を取り除く
-    data = tf.strings.regex_replace(data, r'\.$', '')
-    
-    # ワンホット・エンコーディング
-    # data を1次元（リスト）から2次元（要素が1個のリストのリスト）にリシェープ
-    data = tf.reshape(data, [-1, 1])
-    # それぞれの要素について、カテゴリ数の長さの真偽値のリストで、
-    # 要素とカテゴリのラベルが一致したところが True となるものを作成
-    data = tf.equal(categories, data)
-    # 真偽値を浮動小数点数にキャスト
-    data = tf.cast(data, tf.float32)
-    
-    # エンコーディング全体を次の1行に収めることもできる：
-    # data = tf.cast(tf.equal(categories, tf.reshape(data, [-1, 1])), tf.float32)
-    return data
+#header = ''
 
 def train():
-    batch_size = 2048
+    batch_size = 512
+    n_src_eval = 5000
+    n_src_train = 50000
 
-    ## dataloaderの設定 #
-    src_train_ds = get_dataset(src_train_file_path, batch_size, LABEL_COLUMN)
-    src_eval_ds = get_dataset(src_eval_file_path, batch_size, LABEL_COLUMN)
-    tgt_train_ds = get_dataset(tgt_train_file_path, batch_size, LABEL_COLUMN)
-    tgt_eval_ds = get_dataset(tgt_eval_file_path, batch_size, LABEL_COLUMN)
+    n_tgt_eval = 5000
+    n_tgt_train = 20000
+
+    ## dataloaderの設定 ##
+    src_ds = tfds.load(name='mnist', split=tfds.Split.TRAIN,
+                        as_supervised=True)
+    
+    tgt_ds = tfds.load(name='svhn_cropped', split=tfds.Split.TRAIN,
+                        as_supervised=True)
+    
+    def _standardize(image, label):
+        return image/255, label
+
+    src_ds = src_ds.map(_standardize)
+    src_eval_ds = src_ds.take(n_src_eval)
+    src_vis_ds = src_ds.take(n_src_eval)
+    src_ds = src_ds.skip(n_src_eval)
+    src_train_ds = src_ds.take(n_src_train)
+
+    tgt_ds = tgt_ds.map(_standardize)
+    tgt_eval_ds = tgt_ds.take(n_tgt_eval)
+    tgt_vis_ds = tgt_ds.take(n_tgt_eval)
+    tgt_ds = tgt_ds.skip(n_tgt_eval)
+    tgt_train_ds = tgt_ds.take(n_tgt_train)
 
     src_eval_ds = src_eval_ds.batch(n_src_eval)
     src_eval_ds = src_eval_ds.prefetch(tf.data.experimental.AUTOTUNE)
@@ -115,6 +80,17 @@ def train():
     
     src_x, src_y_ = src_iterator.get_next()
     tgt_x, tgt_y_ = tgt_iterator.get_next()
+
+    src_x = tf.reshape(src_x, [-1, 784])
+    tgt_x = tf.reshape(tgt_x, [-1, 3072])
+
+    with tf.name_scope('mnist_input_reshape'):
+        src_image_shaped_input = tf.reshape(src_x, [-1, 28, 28, 1])
+        tf.summary.image('input', src_image_shaped_input, 5)
+    
+    with tf.name_scope('tgt_input_reshape'):
+        tgt_image_shaped_input = tf.reshape(tgt_x, [-1, 32, 32, 3])
+        tf.summary.image('input', tgt_image_shaped_input, 5)
 
     # We can't initialize these variables to 0 - the network will get stuck.
     def weight_variable(shape):
