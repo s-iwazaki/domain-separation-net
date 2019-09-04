@@ -11,93 +11,66 @@ from tensorflow.contrib.tensorboard.plugins import projector
 from utils import *
 
 FLAGS = None
-LABEL_COLUMN = [
-    ## ここにデータcsvのcolumn名
+
+## 前処理で生のデータ化しておく
+# 
+# 何番目までが一つのカテゴリか定義しておく
+
+SRC_CATEGORY_SPLITER_IN = [
+    2, 3, 4 
 ]
-CATEGORIY_COLUMN = {
-    # 'sex': ['male', 'female'],
-    # 'class' : ['First', 'Second', 'Third'],
-    # 'deck' : ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'],
-    # 'embark_town' : ['Cherbourg', 'Southhampton', 'Queenstown'],
-    # 'alone' : ['y', 'n']
-}
-BAK_COLUMN = {
 
-}
-OUTPUT_COLUMN = {
-    ## ここにクラス分類器の出力になるcolumn名と全カテゴリを示したテキストファイル
-}
+SRC_CATEGORY_SPLITER_OUT = [
+    2, 4, 3
+]
 
-#src_train_file_path = 
-#src_eval_file_path = 
-#tgt_train_file_path = 
-#tgt_eval_file_path = 
+SRC_FEATURE_TYPE_IN = [
+    'cat', 'num'
+]
+SRC_FEATURE_TYPE_OUT = [
+    'cat', 'num'
+]
 
-def preprocess(features, labels):
-  
-    # カテゴリ特徴量の処理
-    for feature in CATEGORY_COLUMN.keys():
-        features[feature] = process_categorical_data(features[feature],
-                                                    CATEGORIES[feature])
-    # 連続特徴量の処理
-    for feature in MEANS.keys():
-        features[feature] = process_continuous_data(features[feature],
-                                                    MEANS[feature])
-    
-    # 特徴量を1つのテンソルに組み立てる
-    features = tf.concat([features[column] for column in FEATURE_COLUMNS], 1)
-    
-    return features, labels
+SRC_OUT_LIST = [3, 15] # 分割後の3番目要素までがoutput
+N_SRC_IN = 10 # 前処理後の入力が10次元
 
-def process_categorical_data(data, categories):
-    """カテゴリ値を表すワンホット・エンコーディングされたテンソルを返す"""
-    
-    # 最初の ' ' を取り除く
-    data = tf.strings.regex_replace(data, '^ ', '')
-    # 最後の '.' を取り除く
-    data = tf.strings.regex_replace(data, r'\.$', '')
-    
-    # ワンホット・エンコーディング
-    # data を1次元（リスト）から2次元（要素が1個のリストのリスト）にリシェープ
-    data = tf.reshape(data, [-1, 1])
-    # それぞれの要素について、カテゴリ数の長さの真偽値のリストで、
-    # 要素とカテゴリのラベルが一致したところが True となるものを作成
-    data = tf.equal(categories, data)
-    # 真偽値を浮動小数点数にキャスト
-    data = tf.cast(data, tf.float32)
-    
-    # エンコーディング全体を次の1行に収めることもできる：
-    # data = tf.cast(tf.equal(categories, tf.reshape(data, [-1, 1])), tf.float32)
-    return data
+SRC_CATEGORY_SPLITER_IN = [
+    2, 3, 4 
+]
+
+SRC_CATEGORY_SPLITER_OUT = [
+    2, 4, 3
+]
+
+TGT_FEATURE_TYPE_IN = [
+    'cat', ''
+]
+TGT_FEATURE_TYPE_OUT = [
+    'cat', ''
+]
+
+TGT_OUT = [3, 10] # 分割後の3番目要素までがoutput
+N_TGT_IN = 10 # 前処理後の入力が10次元
+
+src_train_file_path = 'src_sample_train.csv'
+src_eval_file_path = 'src_sample_eval.csv'
+src_vis_file_path = 'src_sample_vis.csv' # データ数10000で
+tgt_train_file_path = 'tgt_sample_train.csv'
+tgt_eval_file_path = 'tgt_sample_eval.csv'
+tgt_vis_file_path = 'tgt_sample_vis.csv' # データ数10000で
 
 def train():
     batch_size = 2048
+    n_vis = 10000
 
     ## dataloaderの設定 #
-    src_train_ds = get_dataset(src_train_file_path, batch_size, LABEL_COLUMN)
-    src_eval_ds = get_dataset(src_eval_file_path, batch_size, LABEL_COLUMN)
-    tgt_train_ds = get_dataset(tgt_train_file_path, batch_size, LABEL_COLUMN)
-    tgt_eval_ds = get_dataset(tgt_eval_file_path, batch_size, LABEL_COLUMN)
+    src_train_ds = get_dataset(src_train_file_path, batch_size)
+    src_eval_ds = get_dataset(src_eval_file_path)
+    src_vis_ds = get_dataset(src_vis_file_path, is_shuffle=False)
 
-    src_eval_ds = src_eval_ds.batch(n_src_eval)
-    src_eval_ds = src_eval_ds.prefetch(tf.data.experimental.AUTOTUNE)
-
-    src_vis_ds = src_vis_ds.batch(n_src_eval)
-
-    tgt_eval_ds = tgt_eval_ds.batch(n_tgt_eval)
-    tgt_eval_ds = tgt_eval_ds.prefetch(tf.data.experimental.AUTOTUNE)
-
-    tgt_vis_ds = tgt_vis_ds.batch(n_tgt_eval)
-
-    src_train_ds = src_train_ds.shuffle(buffer_size=n_src_train)
-    src_train_ds = src_train_ds.repeat()
-    src_train_ds = src_train_ds.batch(batch_size)
-    src_train_ds = src_train_ds.prefetch(tf.data.experimental.AUTOTUNE)
-
-    tgt_train_ds = tgt_train_ds.shuffle(buffer_size=n_tgt_train)
-    tgt_train_ds = tgt_train_ds.repeat()
-    tgt_train_ds = tgt_train_ds.batch(batch_size)
-    tgt_train_ds = tgt_train_ds.prefetch(tf.data.experimental.AUTOTUNE)
+    tgt_train_ds = get_dataset(tgt_train_file_path, batch_size)
+    tgt_eval_ds = get_dataset(tgt_eval_file_path)
+    tgt_vis_ds = get_dataset(tgt_vis_file_path, is_shuffle=False)
 
     src_iterator = tf.data.Iterator.from_structure(src_train_ds.output_types,
                                            src_train_ds.output_shapes)
@@ -113,8 +86,10 @@ def train():
     tgt_eval_init_op = tgt_iterator.make_initializer(tgt_eval_ds)
     tgt_vis_init_op = tgt_iterator.make_initializer(tgt_vis_ds)
     
-    src_x, src_y_ = src_iterator.get_next()
-    tgt_x, tgt_y_ = tgt_iterator.get_next()
+    src_ds = src_iterator.get_next()
+    tgt_ds = tgt_iterator.get_next()
+    src_y_, src_x = tf.split(src_ds, SRC_OUT)
+    tgt_y_, tgt_x = tf.split(tgt_ds, TGT_OUT)
 
     # We can't initialize these variables to 0 - the network will get stuck.
     def weight_variable(shape):
@@ -168,32 +143,56 @@ def train():
         return positive_path + negative_path
 
     ## private encoder ##
-    penc_src_hidden1 = nn_layer(src_x, 784, 512, 'penc_src_layer1')
-    pfeature_src = nn_layer(penc_src_hidden1, 512, 128, 'penc_src_layer2', act=tf.identity)
+    penc_src_hidden1 = nn_layer(src_x, N_SRC_IN, 512, 'penc_src_layer1')
+    pfeature_src = nn_layer(penc_src_hidden1, 512, 128, 'penc_src_layer2', act=tf.nn.sigmoid)
 
-    penc_tgt_hidden1 = nn_layer(tgt_x, 3072, 1024, 'penc_tgt_layer1')
-    pfeature_tgt = nn_layer(penc_tgt_hidden1, 1024, 128, 'penc_tgt_layer2', act=tf.identity)
+    penc_tgt_hidden1 = nn_layer(tgt_x, N_TGT_IN, 1024, 'penc_tgt_layer1')
+    pfeature_tgt = nn_layer(penc_tgt_hidden1, 1024, 128, 'penc_tgt_layer2', act=tf.nn.sigmoid)
 
     ## shared encoder ##
-    senc_tgt_hidden1 = nn_layer(tgt_x, 3072, 512, 'senc_tgt_layer1')
-    sfeature_tgt = nn_layer(senc_tgt_hidden1, 512, 128, 'senc_layer2', act=tf.identity)
+    senc_tgt_hidden1 = nn_layer(tgt_x, N_TGT_IN, 512, 'senc_tgt_layer1')
+    sfeature_tgt = nn_layer(senc_tgt_hidden1, 512, 128, 'senc_layer2', act=tf.nn.sigmoid)
 
-    senc_src_hidden1 = nn_layer(src_x, 784, 512, 'senc_src_layer1')
-    sfeature_src = nn_layer(senc_src_hidden1, 512, 128, 'senc_layer2', act=tf.identity, reuse=True)
+    senc_src_hidden1 = nn_layer(src_x, N_SRC_IN, 512, 'senc_src_layer1')
+    sfeature_src = nn_layer(senc_src_hidden1, 512, 128, 'senc_layer2', act=tf.nn.sigmoid, reuse=True)
 
     ## shared decoder ##
     dec_src_hidden1 = nn_layer(pfeature_src + sfeature_src, 128, 512, 'dec_layer1')
-    dec_src = nn_layer(dec_src_hidden1, 512, 784, 'pdec_src_layer2', act=tf.identity)
-
+    dec_src = nn_layer(dec_src_hidden1, 512, N_SRC_OUT, 'pdec_src_layer2', act=tf.identity)
+    src_dec_list = []
+    cur = 0
+    for i in range(len(SRC_CATEGORY_SPLITER_IN)):
+        part_dec_src = tf.slice(dec_src, [0, cur], [-1, SRC_CATEGORY_SPLITER_IN[i]])
+        src_dec_list.append(part_dec_src)
+        cur += SRC_CATEGORY_SPLITER_IN[i]    
+        
     dec_tgt_hidden1 = nn_layer(pfeature_tgt + sfeature_tgt, 128, 512, 'dec_layer1', reuse=True)
-    dec_tgt = nn_layer(dec_tgt_hidden1, 512, 3072, 'dec_tgt_layer2', act=tf.identity)
+    dec_tgt = nn_layer(dec_tgt_hidden1, 512, N_TGT_OUT, 'dec_tgt_layer2', act=tf.identity)
+    tgt_dec_list = []
+    cur = 0
+    for i in len(TGT_CATEGORY_SPLITER_IN):    
+        part_dec_tgt = tf.slice(dec_tgt, [0, cur], [-1, TGT_CATEGORY_SPLITER_IN[i]])
+        tgt_dec_list.append(part_dec_tgt)
+        cur += TGT_CATEGORY_SPLITER_IN[i]
 
     ## classifier ##
-    c_src_hidden1 = nn_layer(sfeature_src, 128, 512, 'c_src_layer1')
-    src_y = nn_layer(c_src_hidden1, 512, 10, 'c_src_layer2', act=tf.identity)
-
-    c_tgt_hidden1 = nn_layer(sfeature_tgt, 128, 512, 'c_tgt_layer1')
-    tgt_y = nn_layer(c_tgt_hidden1, 512, 10, 'c_tgt_layer2', act=tf.identity)
+    c_src_hidden1 = nn_layer(sfeature_src, 128, 512, 'c_layer1')
+    src_y = nn_layer(c_src_hidden1, 512, N_SRC_OUT, 'c_src_layer2', act=tf.identity)
+    src_y_list = []
+    cur = 0
+    for i in len(SRC_CATEGORY_SPLITER_OUT):    
+        part_y_src = tf.slice(src_y_, [0, cur], [-1, SRC_CATEGORY_SPLITER_OUT[i]])
+        src_y_list.append(part_y_src)
+        cur += SRC_CATEGORY_SPLITER_OUT[i]
+    
+    c_tgt_hidden1 = nn_layer(sfeature_tgt, 128, 512, 'c_layer1', reuse=True)
+    tgt_y = nn_layer(c_tgt_hidden1, 512, N_TGT_OUT, 'c_tgt_layer2', act=tf.identity)
+    tgt_y_list = []
+    cur = 0
+    for i in len(TGT_CATEGORY_SPLITER_OUT):    
+        part_y_tgt = tf.slice(tgt_y_, [0, cur], [-1, TGT_CATEGORY_SPLITER_OUT[i]])
+        tgt_y_list.append(part_y_tgt)
+        cur += TGT_CATEGORY_SPLITER_OUT[i]
 
     ## adversarial network ##
     a_src_input = gradient_reversal_layer(sfeature_src)
@@ -205,18 +204,33 @@ def train():
     a_tgt_y = nn_layer(a_tgt_hidden1, 512, 1, 'a_layer2', act=tf.identity, reuse=True)
         
     ## src classifier loss ##
-    with tf.name_scope('src_cross_entropy'):
+    with tf.name_scope('src_classifier'):
         with tf.name_scope('total'):
-            src_cross_entropy = tf.reduce_mean(tf.losses.sparse_softmax_cross_entropy(
-                labels=src_y_, logits=src_y))
-        tf.summary.scalar('src_cross_entropy', src_cross_entropy)
+            src_classifier_loss = 0
+            cur = 0
+            for i in range(len(SRC_CATEGORY_SPLITER_OUT)):
+                if SRC_FEATURE_TYPE_OUT[i] == 'cat':
+                    src_classifier_loss += tf.losses.categorical_cross_entropy(
+                        labels=tf.slice(src_y_, [0, cur], [-1, SRC_CATEGORY_SPLITER_OUT[i]]), logits=src_y_list[i])
+                else:
+                    src_classifier_loss += tf.reduce_sum((tf.slice(src_y_, [0, cur], [-1, SRC_CATEGORY_SPLITER_OUT[i]]) - src_y_list[i])**2, axis=-1)
+                cur += SRC_CATEGORY_SPLITER_OUT[i]
+            src_classifier_loss = tf.reduce_mean(src_classifier_loss)
+        tf.summary.scalar('src_classifier_loss', src_classifier_loss)
     
     ## tgt classifier loss ##
-    with tf.name_scope('tgt_cross_entropy'):
+    with tf.name_scope('tgt_classifier'):
         with tf.name_scope('total'):
-            tgt_cross_entropy = tf.reduce_mean(tf.losses.sparse_softmax_cross_entropy(
-                labels=tgt_y_, logits=tgt_y))
-        tf.summary.scalar('tgt_cross_entropy', tgt_cross_entropy)
+            tgt_classifier_loss = 0
+            cur = 0
+            for i in range(len(TGT_CATEGORY_SPLITER_OUT)):
+                if TGT_FEATURE_TYPE_OUT[i] == 'cat':
+                    tgt_classifier_loss += tf.losses.categorical_cross_entropy(
+                        labels=tf.slice(tgt_y_, [0, cur], [-1, TGT_CATEGORY_SPLITER_OUT[i]]), logits=tgt_y_list[i])
+                else:
+                    tgt_classifier_loss += tf.reduce_sum((tf.slice(tgt_y_, [0, cur], [-1, TGT_CATEGORY_SPLITER_OUT[i]]) - tgt_y_list[i])**2, axis=-1)
+                tgt_classifier_loss = tf.reduce_mean(tgt_classifier_loss)
+        tf.summary.scalar('tgt_classifier_loss', tgt_classifier_loss)
 
     ## difference loss ##
     with tf.name_scope('difference'):
@@ -233,15 +247,32 @@ def train():
 
             cor_mat_src = tf.matmul(tsfeature_src, tpfeature_src, transpose_a=True)
             cor_mat_tgt = tf.matmul(tsfeature_tgt, tpfeature_tgt, transpose_a=True)
-            difference = tf.reduce_mean(cor_mat_src**2) + tf.reduce_mean(cor_mat_tgt**2)
+            difference = tf.reduce_mean(tf.reduce_sum(cor_mat_src**2, axis=[1, 2]) + tf.reduce_sum(cor_mat_tgt**2, axis=[1,2]))
         tf.summary.scalar('difference', difference)
     
     ## recons loss ##
     with tf.name_scope('recons_loss'):
         with tf.name_scope('total'):
-            recons_loss = tf.reduce_mean((dec_src - src_x)**2) + \
-                        tf.reduce_mean((dec_tgt - tgt_x)**2)
-        tf.summary.scalar('difference', recons_loss)
+            src_recons_loss = 0
+            tgt_recons_loss = 0
+            src_cur = 0
+            tgt_cur = 0
+            for i in range(len(SRC_FEATURE_TYPE_IN)):
+                if SRC_FEATURE_TYPE_IN[i] == 'cat':
+                    src_recons_loss += tf.losses.categorical_cross_entropy(
+                        labels=tf.slice(src_x, [0, src_cur], [-1, SRC_CATEGORY_SPLITER_IN[i]]), logits=src_dec_list[i])
+                else:
+                    src_recons_loss += tf.reduce_sum((tf.slice(src_x, [0, src_cur], [-1, SRC_CATEGORY_SPLITER_IN[i]]) - src_dec_list[i])**2, axis=-1)
+                src_cur += SRC_CATEGORY_SPLITER_IN[i]
+            for i in range(len(TGT_FEATURE_TYPE_IN)):
+                if TGT_FEATURE_TYPE_IN[i] == 'cat':
+                    tgt_recons_loss += tf.losses.categorical_cross_entropy(
+                        labels=tf.slice(tgt_x, [0, tgt_cur], [-1, TGT_CATEGORY_SPLITER_IN[i]]), logits=tgt_dec_list[i])
+                else:
+                    tgt_recons_loss += tf.reduce_sum((tf.slice(tgt_x, [0, tgt_cur], [-1, TGT_CATEGORY_SPLITER_IN[i]]) - tgt_dec_list[i])**2, axis=-1)
+                tgt_cur += TGT_CATEGORY_SPLITER_IN[i]
+            recons_loss = tf.reduce_mean(src_recons_loss) + tf.reduce_mean(tgt_recons_loss)
+        tf.summary.scalar('reconstruction', recons_loss)
     
     ## similarity loss ##
     with tf.name_scope('similarity_loss'):
@@ -251,21 +282,13 @@ def train():
         tf.summary.scalar('similarity', sim_loss)
 
     with tf.name_scope('train'):
-        loss = tgt_cross_entropy + \
-                FLAGS.eta * src_cross_entropy + \
+        loss = tgt_classifier_loss + \
+                FLAGS.eta * src_classifier_loss + \
                     FLAGS.alpha * recons_loss + \
                         FLAGS.beta * difference + \
                             FLAGS.gamma * sim_loss
         train_step = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(
             loss)
-
-    with tf.name_scope('accuracy'):
-        with tf.name_scope('correct_prediction'):
-            correct_prediction = tf.equal(tf.argmax(input=tgt_y, axis=1), tgt_y_)
-        with tf.name_scope('accuracy'):
-            accuracy = tf.reduce_mean(input_tensor=tf.cast(correct_prediction,
-                                                        tf.float32))
-    tf.summary.scalar('accuracy', accuracy)
 
     # Merge all the summaries and write them out to
     # /tmp/tensorflow/mnist/logs/mnist_with_summaries (by default)
@@ -279,6 +302,7 @@ def train():
             visible_device_list="0"
         )
     )
+    # config = tf.ConfigProto()
     sess = tf.Session(config=config)
     init = tf.global_variables_initializer()
     sess.run([init])
@@ -288,27 +312,34 @@ def train():
     for i in trange(FLAGS.max_step):
         if i % 10 == 0:  # Record summaries and test-set accuracy
             sess.run([src_eval_init_op, tgt_eval_init_op])
-            summary, acc = sess.run([merged, accuracy])
+            summary = sess.run([merged])
             test_writer.add_summary(summary, i)
-            print('Accuracy at step %s: %s' % (i, acc))
+            print('at step %s' % (i,))
             sess.run([src_train_init_op, tgt_train_init_op])
+        if i % 500 = 499:
+            saver.save(sess, FLAGS.model_dir + '/model.ckpt', i)
         else:  # Record a summary
             summary, _ = sess.run([merged, train_step])
             train_writer.add_summary(summary, i)
 
+    saver.save(sess, FLAGS.model_dir + '/model.ckpt', i)
     sess.run([src_vis_init_op, tgt_vis_init_op])
     sfeature_src_xs, sfeature_tgt_xs = sess.run([sfeature_src, sfeature_tgt])
     sess.run([src_vis_init_op, tgt_vis_init_op])
-    src_ys, tgt_ys = sess.run([src_y_, tgt_y_])
+    src_xs, tgt_xs, src_ys, tgt_ys = sess.run([src_x, tgt_x, src_y_, tgt_y_])
+    src_info = np.concatenate([src_xs, src_ys], axis=1)
+    tgt_info = np.concatenate([tgt_xs, tgt_ys], axis=1)
     train_writer.close()
     test_writer.close()
     sess.close()
 
-    sfeature = np.concatenate([sfeature_src_xs, sfeature_tgt_xs])
+    sfeature = np.concatenate([sfeature_src_xs, sfeature_tgt_xs], axis=0)
     is_src = np.concatenate([np.ones(src_ys.shape[0]), np.zeros(tgt_ys.shape[0])])
-    labels = np.concatenate([src_ys, tgt_ys])
+    src_info = np.concatenate([src_info, np.zeros([src_info.shape[0], N_TGT_OUT + N_TGT_IN])], axis=1)
+    tgt_info = np.concatenate([np.zeros([tgt_info.shape[0], N_SRC_OUT + N_SRC_IN]), tgt_info], axis=1)
+    meta_info = np.concatenate([src_info, tgt_info], axis=0)
 
-    return sfeature, labels, is_src
+    return sfeature, meta_info, is_src
 
 def visualize(sfeature, meta, is_src):
     ### visualize middle layer ###
@@ -329,11 +360,6 @@ def visualize(sfeature, meta, is_src):
     embedding_sfeature = proj_config.embeddings.add()
     embedding_sfeature.tensor_name = embeddings.name
 
-    # embedding_src.metadata_path = FLAGS.log_dir + '/meta_src.tsv'
-    # embedding_tgt.metadata_path = FLAGS.log_dir + '/meta_tgt.tsv'
-    # embedding_src.metadata_path = './meta_src.tsv'
-    # embedding_tgt.metadata_path = './meta_tgt.tsv'
-
     meta_path = './meta.tsv'
     embedding_sfeature.metadata_path = meta_path
 
@@ -341,7 +367,7 @@ def visualize(sfeature, meta, is_src):
 
     saver_emb = tf.train.Saver([embeddings])
     saver_emb.save(sess, FLAGS.log_dir + '/emb_vis.ckpt')
-    with open('./log/meta.tsv','w') as fout:
+    with open(FLAGS.log_dir + '/meta.tsv', 'w') as fout:
         fout.write("Index\tLabel\tis_src\n")
         for index in range(is_src.shape[0]):
             fout.write("%d\t%d\t%d\n" % (index, meta[index], is_src[index]))
@@ -353,6 +379,9 @@ def main(_):
     if tf.io.gfile.exists(FLAGS.log_dir):
         tf.io.gfile.rmtree(FLAGS.log_dir)
     tf.io.gfile.makedirs(FLAGS.log_dir)
+    if tf.io.gfile.exists(FLAGS.model_dir):
+        tf.io.gfile.rmtree(FLAGS.model_dir)
+    tf.io.gfile.makedirs(FLAGS.model_dir)
     with tf.Graph().as_default():
         middle_data, labels, is_src = train()
     
@@ -373,8 +402,12 @@ if __name__ == '__main__':
     parser.add_argument(
         '--log_dir',
         type=str,
-        default=os.path.join(os.getenv('TEST_TMPDIR', '/tmp'),
-                            'tensorflow/mnist/logs/mnist_with_summaries'),
+        default='./logs',
+        help='Summaries log directory')
+    parser.add_argument(
+        '--model_dir',
+        type=str,
+        default='./models',
         help='Summaries log directory')
     FLAGS, unparsed = parser.parse_known_args()
     tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
