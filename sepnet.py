@@ -59,6 +59,54 @@ tgt_train_file_path = 'tgt_sample_train.csv'
 tgt_eval_file_path = 'tgt_sample_eval.csv'
 tgt_vis_file_path = 'tgt_sample_vis.csv' # データ数10000で
 
+pred_file_path = ''
+
+# We can't initialize these variables to 0 - the network will get stuck.
+def weight_variable(shape):
+    """Create a weight variable with appropriate initialization."""
+    # initial = tf.random.truncated_normal(shape, stddev=0.1)
+    initial = tf.random.normal(shape, stddev=np.sqrt(2/shape[0]))
+    return tf.get_variable('bias', initializer=initial)
+
+def bias_variable(shape):
+    """Create a bias variable with appropriate initialization."""
+    initial = tf.constant(0.0, shape=shape)
+    return tf.get_variable('weights', initializer=initial)
+
+def variable_summaries(var):
+    """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
+    with tf.name_scope('summaries'):
+        mean = tf.reduce_mean(input_tensor=var)
+        tf.summary.scalar('mean', mean)
+        with tf.name_scope('stddev'):
+            stddev = tf.sqrt(tf.reduce_mean(input_tensor=tf.square(var - mean)))
+        tf.summary.scalar('stddev', stddev)
+        tf.summary.scalar('max', tf.reduce_max(input_tensor=var))
+        tf.summary.scalar('min', tf.reduce_min(input_tensor=var))
+        tf.summary.histogram('histogram', var)
+
+def nn_layer(input_tensor, input_dim, output_dim, layer_name, act=tf.nn.relu, reuse=False):
+    """Reusable code for making a simple neural net layer.
+    It does a matrix multiply, bias add, and then uses ReLU to nonlinearize.
+    It also sets up name scoping so that the resultant graph is easy to read,
+    and adds a number of summary ops.
+    """
+    # Adding a name scope ensures logical grouping of the layers in the graph.
+    with tf.variable_scope(layer_name, reuse=reuse):
+    # This Variable will hold the state of the weights for the layer
+        with tf.name_scope('weights'):
+            weights = weight_variable([input_dim, output_dim])
+            variable_summaries(weights)
+        with tf.name_scope('biases'):
+            biases = bias_variable([output_dim])
+            variable_summaries(biases)
+        with tf.name_scope('Wx_plus_b'):
+            preactivate = tf.matmul(input_tensor, weights) + biases
+            tf.summary.histogram('pre_activations', preactivate)
+        activations = act(preactivate, name='activation')
+        tf.summary.histogram('activations', activations)
+    return activations
+
 def train():
     batch_size = 2048
     n_vis = 10000
@@ -90,52 +138,6 @@ def train():
     tgt_ds = tgt_iterator.get_next()
     src_y_, src_x = tf.split(src_ds, SRC_OUT)
     tgt_y_, tgt_x = tf.split(tgt_ds, TGT_OUT)
-
-    # We can't initialize these variables to 0 - the network will get stuck.
-    def weight_variable(shape):
-        """Create a weight variable with appropriate initialization."""
-        # initial = tf.random.truncated_normal(shape, stddev=0.1)
-        initial = tf.random.normal(shape, stddev=np.sqrt(2/shape[0]))
-        return tf.get_variable('bias', initializer=initial)
-
-    def bias_variable(shape):
-        """Create a bias variable with appropriate initialization."""
-        initial = tf.constant(0.0, shape=shape)
-        return tf.get_variable('weights', initializer=initial)
-
-    def variable_summaries(var):
-        """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
-        with tf.name_scope('summaries'):
-            mean = tf.reduce_mean(input_tensor=var)
-            tf.summary.scalar('mean', mean)
-            with tf.name_scope('stddev'):
-                stddev = tf.sqrt(tf.reduce_mean(input_tensor=tf.square(var - mean)))
-            tf.summary.scalar('stddev', stddev)
-            tf.summary.scalar('max', tf.reduce_max(input_tensor=var))
-            tf.summary.scalar('min', tf.reduce_min(input_tensor=var))
-            tf.summary.histogram('histogram', var)
-
-    def nn_layer(input_tensor, input_dim, output_dim, layer_name, act=tf.nn.relu, reuse=False):
-        """Reusable code for making a simple neural net layer.
-        It does a matrix multiply, bias add, and then uses ReLU to nonlinearize.
-        It also sets up name scoping so that the resultant graph is easy to read,
-        and adds a number of summary ops.
-        """
-        # Adding a name scope ensures logical grouping of the layers in the graph.
-        with tf.variable_scope(layer_name, reuse=reuse):
-        # This Variable will hold the state of the weights for the layer
-            with tf.name_scope('weights'):
-                weights = weight_variable([input_dim, output_dim])
-                variable_summaries(weights)
-            with tf.name_scope('biases'):
-                biases = bias_variable([output_dim])
-                variable_summaries(biases)
-            with tf.name_scope('Wx_plus_b'):
-                preactivate = tf.matmul(input_tensor, weights) + biases
-                tf.summary.histogram('pre_activations', preactivate)
-            activations = act(preactivate, name='activation')
-            tf.summary.histogram('activations', activations)
-        return activations
 
     def gradient_reversal_layer(x):
         positive_path = tf.stop_gradient(x * tf.cast(2, tf.float32))
@@ -374,19 +376,38 @@ def visualize(sfeature, meta, is_src):
     
     proj_writer.close()
     sess.close()
+
+def pred():
+    pred_ds = get_dataset(pred_file_path, epochs=1)
+    senc_tgt_hidden1 = nn_layer(tgt_x, N_TGT_IN, 512, 'senc_tgt_layer1')
+    sfeature_tgt = nn_layer(senc_tgt_hidden1, 512, 128, 'senc_layer2', act=tf.nn.sigmoid)
+
+    sess  = tf.Session()
+    saver = tf.train.Saver()
+    saver.restore(sess, FLAGS.model_dir + '\model.ckpt')
+    
+    while True:
+        sf = sess.run(sfeature_tgt)
+
+    # senc_src_hidden1 = nn_layer(src_x, N_SRC_IN, 512, 'senc_src_layer1')
+    # sfeature_src = nn_layer(senc_src_hidden1, 512, 128, 'senc_layer2', act=tf.nn.sigmoid, reuse=True)
     
 def main(_):
-    if tf.io.gfile.exists(FLAGS.log_dir):
-        tf.io.gfile.rmtree(FLAGS.log_dir)
-    tf.io.gfile.makedirs(FLAGS.log_dir)
-    if tf.io.gfile.exists(FLAGS.model_dir):
-        tf.io.gfile.rmtree(FLAGS.model_dir)
-    tf.io.gfile.makedirs(FLAGS.model_dir)
-    with tf.Graph().as_default():
-        middle_data, labels, is_src = train()
-    
-    with tf.Graph().as_default():
-        visualize(middle_data, labels, is_src)
+    if FLAGS.pred:
+        with tf.Graph().as_default():
+            pred()
+    else:
+        if tf.io.gfile.exists(FLAGS.log_dir):
+            tf.io.gfile.rmtree(FLAGS.log_dir)
+        tf.io.gfile.makedirs(FLAGS.log_dir)
+        if tf.io.gfile.exists(FLAGS.model_dir):
+            tf.io.gfile.rmtree(FLAGS.model_dir)
+        tf.io.gfile.makedirs(FLAGS.model_dir)
+        with tf.Graph().as_default():
+            middle_data, labels, is_src = train()
+        
+        with tf.Graph().as_default():
+            visualize(middle_data, labels, is_src)
     
 
 if __name__ == '__main__':
@@ -399,11 +420,17 @@ if __name__ == '__main__':
     parser.add_argument('--beta', type=float, default=0.075)
     parser.add_argument('--gamma', type=float, default=0.5)
     parser.add_argument('--eta', type=float, default=1.0)
+    parser.add_argument('--pred', action='store_true')
     parser.add_argument(
         '--log_dir',
         type=str,
         default='./logs',
         help='Summaries log directory')
+    parser.add_argument(
+        '--pred_dir',
+        type=str,
+        default='./preds',
+        help='prediction result directory')
     parser.add_argument(
         '--model_dir',
         type=str,
